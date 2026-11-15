@@ -86,3 +86,39 @@ export interface DryRunResponse {
   primary_action: string
   should_halt: boolean
 }
+
+export interface ForbiddenPattern {
+  id: string
+  name: string
+  pattern: string
+  category: string
+  policy_action: string
+  replacement?: string
+  reason: string
+  source_doc?: string
+  updated_at?: string
+}
+
+export interface BenchmarkScenarioResult {
+  scenario_id: string
+  domain: string
+  prompt: string
+  target_entity: string
+  raw_output: string
+  guarded_output: string
+  was_intercepted: boolean
+  action_taken: string
+  status: 'PASSED' | 'FAILED'
+  latency_ms: number
+}
+
+export interface BenchmarkReport {
+  timestamp: string
+  suite_name: string
+  total_scenarios: number
+  passed_scenarios: number
+  compliance_accuracy_score: number
+  average_latency_ms: number
+  certification_hash: string
+  scenarios: BenchmarkScenarioResult[]
+}

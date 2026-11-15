@@ -95,4 +95,17 @@ func TestVerifyClaim(t *testing.T) {
 	if res3.AppliedAction != "strict_halt" {
 		t.Fatalf("expected strict_halt, got %s", res3.AppliedAction)
 	}
+
+	// Case 4: Forbidden commitment rule
+	forbiddenSentence := "We are happy to offer an unconditional lifetime warranty on this product."
+	forbiddenResults, err := engine.VerifyForbidden(forbiddenSentence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(forbiddenResults) == 0 {
+		t.Fatal("expected forbidden result for lifetime warranty")
+	}
+	if forbiddenResults[0].AppliedAction != "strict_halt" {
+		t.Fatalf("expected strict_halt, got %s", forbiddenResults[0].AppliedAction)
+	}
 }

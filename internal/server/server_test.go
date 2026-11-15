@@ -10,6 +10,7 @@ import (
 
 	"github.com/alexandrmotologa/claimguard/internal/config"
 	"github.com/alexandrmotologa/claimguard/internal/extractor"
+	"github.com/alexandrmotologa/claimguard/internal/proxy"
 	"github.com/alexandrmotologa/claimguard/internal/registry"
 	"github.com/alexandrmotologa/claimguard/internal/rewriter"
 	"github.com/alexandrmotologa/claimguard/internal/telemetry"
@@ -39,8 +40,9 @@ func setupTestServer(t *testing.T) (*APIServer, *http.ServeMux) {
 
 	metrics := telemetry.NewMetricsTracker()
 	broadcaster := NewBroadcaster()
+	sim := proxy.NewSimulator(0)
 
-	api := NewAPIServer(store, ver, rew, ext, audit, metrics, broadcaster, cfg)
+	api := NewAPIServer(store, ver, rew, ext, audit, metrics, broadcaster, cfg, sim)
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 

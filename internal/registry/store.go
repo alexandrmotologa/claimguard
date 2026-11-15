@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,20 @@ func (s *Store) initSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id);
 	CREATE INDEX IF NOT EXISTS idx_facts_attribute ON facts(attribute);
+
+	CREATE TABLE IF NOT EXISTS forbidden_patterns (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		pattern TEXT NOT NULL,
+		category TEXT NOT NULL,
+		policy_action TEXT NOT NULL DEFAULT 'strict_halt',
+		replacement TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		source_doc TEXT NOT NULL DEFAULT '',
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_forbidden_category ON forbidden_patterns(category);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -387,6 +402,133 @@ func (s *Store) MatchEntity(text string) (*Entity, error) {
 	}
 
 	return bestEntity, nil
+}
+
+// SaveForbiddenPattern inserts or updates a prohibited assertion rule.
+func (s *Store) SaveForbiddenPattern(fp ForbiddenPattern) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if fp.UpdatedAt.IsZero() {
+		fp.UpdatedAt = time.Now().UTC()
+	}
+
+	query := `
+	INSERT INTO forbidden_patterns (
+		id, name, pattern, category, policy_action, replacement, reason, source_doc, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(id) DO UPDATE SET
+		name = excluded.name,
+		pattern = excluded.pattern,
+		category = excluded.category,
+		policy_action = excluded.policy_action,
+		replacement = excluded.replacement,
+		reason = excluded.reason,
+		source_doc = excluded.source_doc,
+		updated_at = excluded.updated_at;
+	`
+	_, err := s.db.Exec(query,
+		fp.ID, fp.Name, fp.Pattern, fp.Category, fp.PolicyAction,
+		fp.Replacement, fp.Reason, fp.SourceDoc, fp.UpdatedAt.Format(time.RFC3339),
+	)
+	return err
+}
+
+// GetForbiddenPattern retrieves a forbidden pattern rule by its ID.
+func (s *Store) GetForbiddenPattern(id string) (*ForbiddenPattern, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var fp ForbiddenPattern
+	var updatedAtStr string
+
+	query := `
+	SELECT id, name, pattern, category, policy_action, replacement, reason, source_doc, updated_at
+	FROM forbidden_patterns WHERE id = ?
+	`
+	err := s.db.QueryRow(query, id).Scan(
+		&fp.ID, &fp.Name, &fp.Pattern, &fp.Category, &fp.PolicyAction,
+		&fp.Replacement, &fp.Reason, &fp.SourceDoc, &updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	t, _ := time.Parse(time.RFC3339, updatedAtStr)
+	fp.UpdatedAt = t
+	return &fp, nil
+}
+
+// ListForbiddenPatterns returns all active forbidden commitment rules.
+func (s *Store) ListForbiddenPatterns() ([]ForbiddenPattern, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query(`
+	SELECT id, name, pattern, category, policy_action, replacement, reason, source_doc, updated_at
+	FROM forbidden_patterns ORDER BY name ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []ForbiddenPattern
+	for rows.Next() {
+		var fp ForbiddenPattern
+		var updatedAtStr string
+		err := rows.Scan(
+			&fp.ID, &fp.Name, &fp.Pattern, &fp.Category, &fp.PolicyAction,
+			&fp.Replacement, &fp.Reason, &fp.SourceDoc, &updatedAtStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+		t, _ := time.Parse(time.RFC3339, updatedAtStr)
+		fp.UpdatedAt = t
+		list = append(list, fp)
+	}
+
+	return list, rows.Err()
+}
+
+// DeleteForbiddenPattern removes a forbidden rule by ID.
+func (s *Store) DeleteForbiddenPattern(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec(`DELETE FROM forbidden_patterns WHERE id = ?`, id)
+	return err
+}
+
+// CheckForbidden scans a sentence against all registered forbidden patterns.
+func (s *Store) CheckForbidden(sentence string) ([]ForbiddenMatch, error) {
+	patterns, err := s.ListForbiddenPatterns()
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []ForbiddenMatch
+	for _, fp := range patterns {
+		re, err := regexp.Compile(fp.Pattern)
+		if err != nil {
+			continue
+		}
+
+		locs := re.FindAllStringIndex(sentence, -1)
+		for _, loc := range locs {
+			matches = append(matches, ForbiddenMatch{
+				Pattern: fp,
+				Matched: sentence[loc[0]:loc[1]],
+				Start:   loc[0],
+				End:     loc[1],
+			})
+		}
+	}
+
+	return matches, nil
 }
 
 // Close terminates open database handles.

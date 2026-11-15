@@ -58,6 +58,13 @@ func (s *Store) LoadFromFile(path string) (*SeedData, error) {
 		}
 	}
 
+	// Persist forbidden commitment patterns
+	for _, fp := range seed.ForbiddenPatterns {
+		if err := s.SaveForbiddenPattern(fp); err != nil {
+			return nil, fmt.Errorf("save forbidden pattern %s: %w", fp.ID, err)
+		}
+	}
+
 	return &seed, nil
 }
 

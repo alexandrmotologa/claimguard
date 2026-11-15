@@ -99,3 +99,52 @@ func (e *Engine) VerifyClaim(claim extractor.ExtractedClaim) (*VerificationResul
 			claim.AssertedValue, fact.ExpectedValue, claim.EntityID, claim.Attribute),
 	}, nil
 }
+
+// VerifyForbidden checks a sentence against registered forbidden commitments and negative invariants.
+func (e *Engine) VerifyForbidden(sentence string) ([]*VerificationResult, error) {
+	matches, err := e.store.CheckForbidden(sentence)
+	if err != nil {
+		return nil, fmt.Errorf("check forbidden: %w", err)
+	}
+
+	var results []*VerificationResult
+	for _, m := range matches {
+		var authorFact *registry.Fact
+		if m.Pattern.Replacement != "" {
+			authorFact = &registry.Fact{
+				ID:            m.Pattern.ID,
+				EntityID:      "forbidden." + m.Pattern.Category,
+				Attribute:     m.Pattern.ID,
+				ClaimType:     "text",
+				ExpectedValue: m.Pattern.Replacement,
+				SourceDoc:     m.Pattern.SourceDoc,
+			}
+		}
+
+		res := &VerificationResult{
+			Status: StatusContradicted,
+			Claim: extractor.ExtractedClaim{
+				RawSentence:   sentence,
+				EntityID:      "forbidden." + m.Pattern.Category,
+				EntityName:    m.Pattern.Name,
+				Attribute:     m.Pattern.ID,
+				ClaimType:     "forbidden_pattern",
+				AssertedValue: m.Matched,
+				Span: extractor.ValueSpan{
+					RawMatch:  m.Matched,
+					ClaimType: "forbidden_pattern",
+					Start:     m.Start,
+					End:       m.End,
+				},
+			},
+			AuthoritativeFact: authorFact,
+			Delta:             1.0,
+			AppliedAction:     m.Pattern.PolicyAction,
+			AuditMessage: fmt.Sprintf("Prohibited commitment intercepted: '%s' violates rule %s (%s)",
+				m.Matched, m.Pattern.Name, m.Pattern.Reason),
+		}
+		results = append(results, res)
+	}
+
+	return results, nil
+}

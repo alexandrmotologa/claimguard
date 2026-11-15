@@ -1,6 +1,8 @@
 package telemetry
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,4 +150,57 @@ func (m *MetricsTracker) Snapshot() MetricsSnapshot {
 		InterventionsByAction: actions,
 		ViolationsByEntity:    violations,
 	}
+}
+
+// PrometheusFormat serializes current telemetry metrics into standard OpenMetrics / Prometheus exposition text.
+func (m *MetricsTracker) PrometheusFormat() string {
+	snap := m.Snapshot()
+
+	var b strings.Builder
+	b.WriteString("# HELP claimguard_uptime_seconds Total runtime in seconds\n")
+	b.WriteString("# TYPE claimguard_uptime_seconds gauge\n")
+	fmt.Fprintf(&b, "claimguard_uptime_seconds %.2f\n\n", snap.UptimeSeconds)
+
+	b.WriteString("# HELP claimguard_requests_total Total number of chat completion requests\n")
+	b.WriteString("# TYPE claimguard_requests_total counter\n")
+	fmt.Fprintf(&b, "claimguard_requests_total %d\n\n", snap.TotalRequests)
+
+	b.WriteString("# HELP claimguard_tokens_scanned_total Total number of tokens scanned\n")
+	b.WriteString("# TYPE claimguard_tokens_scanned_total counter\n")
+	fmt.Fprintf(&b, "claimguard_tokens_scanned_total %d\n\n", snap.TotalTokens)
+
+	b.WriteString("# HELP claimguard_sentences_analyzed_total Total number of sentences analyzed\n")
+	b.WriteString("# TYPE claimguard_sentences_analyzed_total counter\n")
+	fmt.Fprintf(&b, "claimguard_sentences_analyzed_total %d\n\n", snap.TotalSentences)
+
+	b.WriteString("# HELP claimguard_claims_verified_total Total claims cross-referenced against ground truth\n")
+	b.WriteString("# TYPE claimguard_claims_verified_total counter\n")
+	fmt.Fprintf(&b, "claimguard_claims_verified_total %d\n\n", snap.TotalClaimsVerified)
+
+	b.WriteString("# HELP claimguard_contradictions_total Total intercepted factual contradictions\n")
+	b.WriteString("# TYPE claimguard_contradictions_total counter\n")
+	fmt.Fprintf(&b, "claimguard_contradictions_total %d\n\n", snap.TotalContradictions)
+
+	b.WriteString("# HELP claimguard_interception_rate_percent Intercepted contradictions percentage\n")
+	b.WriteString("# TYPE claimguard_interception_rate_percent gauge\n")
+	fmt.Fprintf(&b, "claimguard_interception_rate_percent %.2f\n\n", snap.InterceptionRatePct)
+
+	b.WriteString("# HELP claimguard_average_latency_ms Average sentence interception latency in milliseconds\n")
+	b.WriteString("# TYPE claimguard_average_latency_ms gauge\n")
+	fmt.Fprintf(&b, "claimguard_average_latency_ms %.4f\n\n", snap.AverageLatencyMs)
+
+	b.WriteString("# HELP claimguard_interventions_total Interventions by policy action\n")
+	b.WriteString("# TYPE claimguard_interventions_total counter\n")
+	for action, count := range snap.InterventionsByAction {
+		fmt.Fprintf(&b, "claimguard_interventions_total{action=\"%s\"} %d\n", action, count)
+	}
+	b.WriteString("\n")
+
+	b.WriteString("# HELP claimguard_violations_by_entity_total Violations grouped by entity\n")
+	b.WriteString("# TYPE claimguard_violations_by_entity_total counter\n")
+	for entity, count := range snap.ViolationsByEntity {
+		fmt.Fprintf(&b, "claimguard_violations_by_entity_total{entity_id=\"%s\"} %d\n", entity, count)
+	}
+
+	return b.String()
 }

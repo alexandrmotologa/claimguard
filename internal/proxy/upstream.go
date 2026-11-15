@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/alexandrmotologa/claimguard/internal/config"
 )
@@ -166,4 +167,77 @@ func (c *HTTPUpstreamClient) Complete(ctx context.Context, req *ChatCompletionRe
 	}
 
 	return &completionResp, nil
+}
+
+// FailoverClient wraps a primary provider and one or more backup providers.
+type FailoverClient struct {
+	primary   UpstreamClient
+	fallbacks []UpstreamClient
+}
+
+// NewFailoverClient creates an upstream client with automatic multi-model failover.
+func NewFailoverClient(primary UpstreamClient, fallbacks ...UpstreamClient) *FailoverClient {
+	return &FailoverClient{
+		primary:   primary,
+		fallbacks: fallbacks,
+	}
+}
+
+// StreamCompletion attempts primary streaming, falling back to backup models on failure.
+func (fc *FailoverClient) StreamCompletion(ctx context.Context, req *ChatCompletionRequest) (io.ReadCloser, error) {
+	stream, err := fc.primary.StreamCompletion(ctx, req)
+	if err == nil {
+		return stream, nil
+	}
+
+	for _, fb := range fc.fallbacks {
+		stream, fbErr := fb.StreamCompletion(ctx, req)
+		if fbErr == nil {
+			return stream, nil
+		}
+	}
+
+	return nil, fmt.Errorf("all primary and fallback providers failed: %w", err)
+}
+
+// Complete attempts primary completion, falling back to backup models on failure.
+func (fc *FailoverClient) Complete(ctx context.Context, req *ChatCompletionRequest) (*NonStreamingResponse, error) {
+	resp, err := fc.primary.Complete(ctx, req)
+	if err == nil {
+		return resp, nil
+	}
+
+	for _, fb := range fc.fallbacks {
+		resp, fbErr := fb.Complete(ctx, req)
+		if fbErr == nil {
+			return resp, nil
+		}
+	}
+
+	return nil, fmt.Errorf("all primary and fallback providers failed: %w", err)
+}
+
+// BuildUpstreamClient creates an UpstreamClient with optional configured fallbacks.
+func BuildUpstreamClient(cfg config.UpstreamConfig) UpstreamClient {
+	var primary UpstreamClient
+	if cfg.Provider == "simulator" {
+		primary = NewSimulator(15 * time.Millisecond)
+	} else {
+		primary = NewHTTPUpstreamClient(cfg)
+	}
+
+	if len(cfg.Fallbacks) == 0 {
+		return primary
+	}
+
+	var fallbacks []UpstreamClient
+	for _, fbCfg := range cfg.Fallbacks {
+		if fbCfg.Provider == "simulator" {
+			fallbacks = append(fallbacks, NewSimulator(15*time.Millisecond))
+		} else {
+			fallbacks = append(fallbacks, NewHTTPUpstreamClient(fbCfg))
+		}
+	}
+
+	return NewFailoverClient(primary, fallbacks...)
 }

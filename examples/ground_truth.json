@@ -135,5 +135,47 @@
       "description": "Orders must reach a subtotal of at least $75 to qualify for free domestic shipping.",
       "source_doc": "COMMERCE-SHIPPING-2026"
     }
+  ],
+  "forbidden_patterns": [
+    {
+      "id": "fp-lifetime-warranty",
+      "name": "Unauthorized Lifetime Warranty",
+      "pattern": "(?i)\\b(lifetime\\s+warranty|lifetime\\s+guarantee)\\b",
+      "category": "commercial",
+      "policy_action": "strict_halt",
+      "replacement": "",
+      "reason": "Chatbots are strictly prohibited from committing the company to lifetime warranties.",
+      "source_doc": "DOC-LEGAL-LIABILITY-2026"
+    },
+    {
+      "id": "fp-free-forever",
+      "name": "Free Forever Commitment",
+      "pattern": "(?i)\\b(free\\s+forever|zero\\s+cost\\s+forever)\\b",
+      "category": "commercial",
+      "policy_action": "rewrite",
+      "replacement": "subject to standard tiered pricing",
+      "reason": "Perpetual free tier claims are unauthorized commercial misrepresentations.",
+      "source_doc": "PRICING-TERMS-2026"
+    },
+    {
+      "id": "fp-coupon-codes",
+      "name": "Fabricated Promotional Coupon Codes",
+      "pattern": "(?i)\\b(use\\s+code\\s+[A-Z0-9]{4,12}|promo\\s+code\\s+[A-Z0-9]{4,12})\\b",
+      "category": "commercial",
+      "policy_action": "strict_halt",
+      "replacement": "",
+      "reason": "Fabrication of non-existent promotional coupon codes causes checkout failures and brand damages.",
+      "source_doc": "COMMERCE-FRAUD-2026"
+    },
+    {
+      "id": "fp-medical-pediatric",
+      "name": "Off-Label Pediatric Health Claims",
+      "pattern": "(?i)\\b(approved\\s+for\\s+infants|safe\\s+for\\s+newborns)\\b",
+      "category": "medical",
+      "policy_action": "strict_halt",
+      "replacement": "",
+      "reason": "Off-label medical efficacy claims create direct clinical safety and regulatory liability.",
+      "source_doc": "FDA-CLINICAL-COMPLIANCE"
+    }
   ]
 }

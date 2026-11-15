@@ -10,7 +10,6 @@ import (
 	"github.com/alexandrmotologa/claimguard/internal/config"
 	"github.com/alexandrmotologa/claimguard/internal/extractor"
 	"github.com/alexandrmotologa/claimguard/internal/rewriter"
-	"github.com/alexandrmotologa/claimguard/internal/server"
 	"github.com/alexandrmotologa/claimguard/internal/telemetry"
 	"github.com/alexandrmotologa/claimguard/internal/verifier"
 )
@@ -25,7 +24,7 @@ type ProxyHandler struct {
 	rewriter    *rewriter.Rewriter
 	auditLogger *telemetry.AuditLogger
 	metrics     *telemetry.MetricsTracker
-	broadcaster *server.Broadcaster
+	broadcaster *telemetry.Broadcaster
 }
 
 // NewProxyHandler initializes the HTTP proxy handler.
@@ -37,7 +36,7 @@ func NewProxyHandler(
 	rew *rewriter.Rewriter,
 	audit *telemetry.AuditLogger,
 	metrics *telemetry.MetricsTracker,
-	broadcaster *server.Broadcaster,
+	broadcaster *telemetry.Broadcaster,
 ) *ProxyHandler {
 	interceptor := NewStreamInterceptor(ext, ver, rew, audit, metrics, broadcaster)
 
@@ -76,6 +75,9 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleChatCompletions(w, r)
 	case strings.HasSuffix(path, "/models"):
 		h.handleModels(w, r)
+	case strings.HasSuffix(path, "/metrics"):
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		w.Write([]byte(h.metrics.PrometheusFormat()))
 	default:
 		http.NotFound(w, r)
 	}
@@ -127,20 +129,30 @@ func (h *ProxyHandler) handleChatCompletions(w http.ResponseWriter, r *http.Requ
 			start := time.Now()
 			h.metrics.RecordSentence()
 
-			claims, err := h.extractor.ExtractClaims(s.Text, promptContext)
-			if err != nil || len(claims) == 0 {
-				transformedSentences = append(transformedSentences, s.Text)
-				continue
+			var results []*verifier.VerificationResult
+
+			// 1. Check forbidden commitments
+			forbiddenResults, err := h.verifier.VerifyForbidden(s.Text)
+			if err == nil && len(forbiddenResults) > 0 {
+				results = append(results, forbiddenResults...)
 			}
 
-			var results []*verifier.VerificationResult
-			for _, c := range claims {
-				h.metrics.RecordClaimVerified()
-				res, err := h.verifier.VerifyClaim(c)
-				if err != nil {
-					continue
+			// 2. Check factual and numerical claims
+			claims, err := h.extractor.ExtractClaims(s.Text, promptContext)
+			if err == nil {
+				for _, c := range claims {
+					h.metrics.RecordClaimVerified()
+					res, err := h.verifier.VerifyClaim(c)
+					if err != nil {
+						continue
+					}
+					results = append(results, res)
 				}
-				results = append(results, res)
+			}
+
+			if len(results) == 0 {
+				transformedSentences = append(transformedSentences, s.Text)
+				continue
 			}
 
 			tRes := h.rewriter.Transform(s.Text, results)

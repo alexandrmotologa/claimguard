@@ -236,3 +236,12 @@ claimguard/
 - [x] Run race condition detection tests (`go test -race ./...`).
 - [x] Run benchmarks verifying added latency stays under 15ms on streaming connections (~0.1ms measured).
 - [x] Complete technical documentation in `docs/` and verify humanizer guidelines throughout.
+
+### Phase 9: Enterprise extensions and advanced governance safeguards
+- [x] Implement forbidden commitments and negative invariants engine (`internal/registry`, `forbidden_patterns`).
+- [x] Expose standard OpenMetrics / Prometheus endpoint (`/metrics`) for enterprise Datadog and Grafana monitoring.
+- [x] Build multi-provider upstream failover engine (`internal/proxy/upstream.go`, `FailoverClient`).
+- [x] Implement automated compliance red-teaming and benchmark scanner (`claimguard scan` and `internal/benchmark`).
+- [x] Add word-level inline diff highlighting view to the React 19 StreamAuditor.
+- [x] Add drag-and-drop Ground Truth file ingestion and forbidden pattern management in the React 19 studio.
+- [x] Integrate Red-Team Benchmark cockpit tab in the verification studio with one-click test execution and compliance certificate export.

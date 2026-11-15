@@ -12,7 +12,6 @@ import (
 
 	"github.com/alexandrmotologa/claimguard/internal/extractor"
 	"github.com/alexandrmotologa/claimguard/internal/rewriter"
-	"github.com/alexandrmotologa/claimguard/internal/server"
 	"github.com/alexandrmotologa/claimguard/internal/telemetry"
 	"github.com/alexandrmotologa/claimguard/internal/verifier"
 )
@@ -24,7 +23,7 @@ type StreamInterceptor struct {
 	rewriter    *rewriter.Rewriter
 	auditLogger *telemetry.AuditLogger
 	metrics     *telemetry.MetricsTracker
-	broadcaster *server.Broadcaster
+	broadcaster *telemetry.Broadcaster
 }
 
 // NewStreamInterceptor creates a new streaming token interceptor.
@@ -34,7 +33,7 @@ func NewStreamInterceptor(
 	rew *rewriter.Rewriter,
 	audit *telemetry.AuditLogger,
 	metrics *telemetry.MetricsTracker,
-	broadcaster *server.Broadcaster,
+	broadcaster *telemetry.Broadcaster,
 ) *StreamInterceptor {
 	return &StreamInterceptor{
 		extractor:   ext,
@@ -102,21 +101,31 @@ func (si *StreamInterceptor) InterceptStream(
 		start := time.Now()
 		si.metrics.RecordSentence()
 
-		claims, err := si.extractor.ExtractClaims(sentence, promptContext)
-		if err != nil || len(claims) == 0 {
-			// No verifiable claim in sentence, release directly
-			emitChunk(sentence+" ", nil)
-			return true
+		var results []*verifier.VerificationResult
+
+		// 1. Check for prohibited commitments and negative invariants
+		forbiddenResults, err := si.verifier.VerifyForbidden(sentence)
+		if err == nil && len(forbiddenResults) > 0 {
+			results = append(results, forbiddenResults...)
 		}
 
-		var results []*verifier.VerificationResult
-		for _, c := range claims {
-			si.metrics.RecordClaimVerified()
-			res, err := si.verifier.VerifyClaim(c)
-			if err != nil {
-				continue
+		// 2. Check for extracted factual and numerical claims
+		claims, err := si.extractor.ExtractClaims(sentence, promptContext)
+		if err == nil {
+			for _, c := range claims {
+				si.metrics.RecordClaimVerified()
+				res, err := si.verifier.VerifyClaim(c)
+				if err != nil {
+					continue
+				}
+				results = append(results, res)
 			}
-			results = append(results, res)
+		}
+
+		if len(results) == 0 {
+			// No verifiable claim or forbidden pattern, release directly
+			emitChunk(sentence+" ", nil)
+			return true
 		}
 
 		transformRes := si.rewriter.Transform(sentence, results)

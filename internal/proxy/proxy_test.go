@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,7 +17,6 @@ import (
 	"github.com/alexandrmotologa/claimguard/internal/extractor"
 	"github.com/alexandrmotologa/claimguard/internal/registry"
 	"github.com/alexandrmotologa/claimguard/internal/rewriter"
-	"github.com/alexandrmotologa/claimguard/internal/server"
 	"github.com/alexandrmotologa/claimguard/internal/telemetry"
 	"github.com/alexandrmotologa/claimguard/internal/verifier"
 )
@@ -40,7 +41,7 @@ func setupTestProxy(t *testing.T) (*ProxyHandler, *telemetry.AuditLogger, *telem
 	}
 
 	metrics := telemetry.NewMetricsTracker()
-	broadcaster := server.NewBroadcaster()
+	broadcaster := telemetry.NewBroadcaster()
 
 	ext := extractor.NewExtractor(store)
 	ver := verifier.NewEngine(store, cfg.Policy)
@@ -150,4 +151,42 @@ func TestSimulatorOffline(t *testing.T) {
 	if !strings.Contains(resp.Choices[0].Message.Content, "29.9%") {
 		t.Fatalf("expected 29.9%% in loan APR simulation, got: %s", resp.Choices[0].Message.Content)
 	}
+}
+
+type failingClient struct{}
+
+func (f *failingClient) StreamCompletion(ctx context.Context, req *ChatCompletionRequest) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("simulated upstream outage 503")
+}
+
+func (f *failingClient) Complete(ctx context.Context, req *ChatCompletionRequest) (*NonStreamingResponse, error) {
+	return nil, fmt.Errorf("simulated upstream outage 503")
+}
+
+func TestFailoverClient(t *testing.T) {
+	primary := &failingClient{}
+	fallback := NewSimulator(0)
+
+	fc := NewFailoverClient(primary, fallback)
+
+	req := &ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: "Hello world"},
+		},
+	}
+
+	resp, err := fc.Complete(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected failover to succeed, got error: %v", err)
+	}
+	if len(resp.Choices) == 0 {
+		t.Fatal("expected choices from fallback client")
+	}
+
+	stream, err := fc.StreamCompletion(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected stream failover to succeed, got error: %v", err)
+	}
+	defer stream.Close()
 }

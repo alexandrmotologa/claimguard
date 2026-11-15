@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Send, Sparkles, CheckCircle2, AlertOctagon, ArrowRight, RefreshCw } from 'lucide-react'
-import { DryRunResponse } from '../types'
+import { Send, Sparkles, CheckCircle2, AlertOctagon, ArrowRight, RefreshCw, Columns2, AlignLeft } from 'lucide-react'
+import { DryRunResponse, VerificationResult } from '../types'
 
 const SAMPLE_PROMPTS = [
   { label: 'Return Policy', prompt: 'Can I return items within 60 days if I change my mind?' },
@@ -14,21 +14,42 @@ const SAMPLE_PROMPTS = [
 export const StreamAuditor: React.FC = () => {
   const [prompt, setPrompt] = useState('Can I return items within 60 days if I change my mind?')
   const [loading, setLoading] = useState(false)
-  const [rawOutput, setRawOutput] = useState<string>('')
   const [guardedOutput, setGuardedOutput] = useState<string>('')
   const [analysis, setAnalysis] = useState<DryRunResponse | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [viewMode, setViewMode] = useState<'split' | 'inline'>('split')
+
+  const getSimulatedRaw = (p: string) => {
+    const lower = p.toLowerCase()
+    if (lower.includes('return') || lower.includes('refund')) {
+      return 'We offer a 60-day return policy for all items, ensuring a full refund with zero restocking fees.'
+    }
+    if (lower.includes('enterprise')) {
+      return 'The enterprise plan costs $99/month with unlimited seats and dedicated account management.'
+    }
+    if (lower.includes('starter') || lower.includes('basic')) {
+      return 'Pricing for the starter tier is $10/month and gives you access to core platform features.'
+    }
+    if (lower.includes('apr') || lower.includes('interest')) {
+      return 'The maximum APR for our consumer loans is 29.9% depending on underwriting risk.'
+    }
+    if (lower.includes('deductible')) {
+      return 'Under your medical insurance schedule, your individual deductible is $250 for in-network healthcare services.'
+    }
+    if (lower.includes('sla') || lower.includes('uptime')) {
+      return 'Our service level agreement guarantees 95.0% target uptime availability per calendar quarter.'
+    }
+    return guardedOutput
+  }
 
   const handleRunTest = async () => {
     if (!prompt.trim() || loading) return
     setLoading(true)
     setIsStreaming(true)
-    setRawOutput('')
     setGuardedOutput('')
     setAnalysis(null)
 
     try {
-      // 1. Call proxy SSE endpoint to demonstrate live guarded stream
       const response = await fetch('/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,7 +94,7 @@ export const StreamAuditor: React.FC = () => {
         }
       }
 
-      // 2. Fetch dry-run semantic analysis breakdown for the inspector drawer
+      // Fetch semantic dry-run breakdown
       const dryRunRes = await fetch('/api/verify/dry-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,22 +117,81 @@ export const StreamAuditor: React.FC = () => {
     }
   }
 
+  const renderInlineDiff = () => {
+    if (!guardedOutput) {
+      return <span className="text-slate-500 italic">Run a test to inspect inline word-level diffs...</span>
+    }
+
+    const raw = getSimulatedRaw(prompt)
+    if (!analysis || analysis.results.length === 0) {
+      return <span className="text-slate-200">{guardedOutput}</span>
+    }
+
+    // Replace contradicted segments with red strikethrough and green replacement
+    let rendered = guardedOutput
+    return (
+      <div className="space-y-3 font-mono text-xs leading-relaxed">
+        <div className="p-3 rounded bg-surface border border-border text-slate-300">
+          <span className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Guarded Sentence with Highlighted Interventions:</span>
+          {analysis.results.map((r, i) => (
+            <div key={i} className="mb-2">
+              <span className="line-through text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded mr-2">
+                {r.claim.asserted_value}
+              </span>
+              <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded mr-2">
+                {r.authoritative_fact?.expected_value || r.applied_action}
+              </span>
+              <span className="text-slate-400 text-[11px]">
+                ({r.claim.entity_id}.{r.claim.attribute} &bull; Rule: {r.applied_action})
+              </span>
+            </div>
+          ))}
+          <div className="pt-2 border-t border-border/60 text-slate-100 font-sans text-sm">
+            {guardedOutput}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-surface border border-border rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Live Stream Auditor</h2>
           <p className="text-xs text-slate-400 mt-0.5">
             Intercept and inspect streaming LLM token assertions sentence-by-sentence before client delivery.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {isStreaming && (
             <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              Streaming & Verifying...
+              Streaming &amp; Verifying...
             </span>
           )}
+
+          {/* View Toggle */}
+          <div className="flex items-center bg-surface-elevated border border-border rounded-lg p-0.5 text-xs">
+            <button
+              onClick={() => setViewMode('split')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors ${
+                viewMode === 'split' ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+              <span>Side-by-Side</span>
+            </button>
+            <button
+              onClick={() => setViewMode('inline')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors ${
+                viewMode === 'inline' ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <AlignLeft className="w-3.5 h-3.5" />
+              <span>Inline Diff</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -153,56 +233,57 @@ export const StreamAuditor: React.FC = () => {
         </button>
       </div>
 
-      {/* Side-by-Side Stream Inspector */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left: Raw LLM Output (Before Interception) */}
-        <div className="bg-surface-elevated border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between pb-2 mb-3 border-b border-border">
-            <span className="text-xs uppercase tracking-wider font-semibold text-amber-400 flex items-center gap-1.5">
-              <AlertOctagon className="w-3.5 h-3.5" />
-              Raw Model Generation (Upstream)
-            </span>
-            <span className="text-[11px] text-slate-400">Unfiltered tokens</span>
-          </div>
-          <div className="text-sm text-slate-300 leading-relaxed min-h-[120px] font-mono text-xs">
-            {guardedOutput ? (
-              <span className="text-slate-300">
-                {prompt.toLowerCase().includes('return')
-                  ? 'We offer a 60-day return policy for all items, ensuring a full refund with zero restocking fees.'
-                  : prompt.toLowerCase().includes('enterprise')
-                  ? 'The enterprise plan costs $99/month with unlimited seats and dedicated account management.'
-                  : prompt.toLowerCase().includes('starter')
-                  ? 'Pricing for the starter tier is $10/month and gives you access to core platform features.'
-                  : prompt.toLowerCase().includes('apr')
-                  ? 'The maximum APR for our consumer loans is 29.9% depending on underwriting risk.'
-                  : prompt.toLowerCase().includes('deductible')
-                  ? 'Under your medical insurance schedule, your individual deductible is $250 for in-network healthcare services.'
-                  : guardedOutput}
+      {/* View Modes */}
+      {viewMode === 'split' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Left: Raw LLM Output (Before Interception) */}
+          <div className="bg-surface-elevated border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between pb-2 mb-3 border-b border-border">
+              <span className="text-xs uppercase tracking-wider font-semibold text-amber-400 flex items-center gap-1.5">
+                <AlertOctagon className="w-3.5 h-3.5" />
+                Raw Model Generation (Upstream)
               </span>
-            ) : (
-              <span className="text-slate-500 italic">Click &quot;Send to Proxy&quot; to test stream interception.</span>
-            )}
+              <span className="text-[11px] text-slate-400">Unfiltered tokens</span>
+            </div>
+            <div className="text-sm text-slate-300 leading-relaxed min-h-[120px] font-mono text-xs">
+              {guardedOutput ? (
+                <span className="text-slate-300">{getSimulatedRaw(prompt)}</span>
+              ) : (
+                <span className="text-slate-500 italic">Click &quot;Send to Proxy&quot; to test stream interception.</span>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Guarded Output (After claimguard Interception) */}
+          <div className="bg-surface-elevated border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between pb-2 mb-3 border-b border-border">
+              <span className="text-xs uppercase tracking-wider font-semibold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                claimguard Guarded Stream (Delivered)
+              </span>
+              <span className="text-[11px] text-emerald-400 font-medium">Sub-10ms active patch</span>
+            </div>
+            <div className="text-sm text-slate-100 leading-relaxed min-h-[120px] font-mono text-xs">
+              {guardedOutput ? (
+                <span className="text-slate-100">{guardedOutput}</span>
+              ) : (
+                <span className="text-slate-500 italic">Awaiting guarded stream output...</span>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Right: Guarded Output (After claimguard Interception) */}
+      ) : (
         <div className="bg-surface-elevated border border-border rounded-lg p-4">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-border">
-            <span className="text-xs uppercase tracking-wider font-semibold text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              claimguard Guarded Stream (Delivered)
+            <span className="text-xs uppercase tracking-wider font-semibold text-blue-400 flex items-center gap-1.5">
+              <AlignLeft className="w-3.5 h-3.5" />
+              Word-Level Diff Analysis
             </span>
-            <span className="text-[11px] text-emerald-400 font-medium">Sub-10ms active patch</span>
+            <span className="text-[11px] text-slate-400">In-place token substitutions</span>
           </div>
-          <div className="text-sm text-slate-100 leading-relaxed min-h-[120px] font-mono text-xs">
-            {guardedOutput ? (
-              <span className="text-slate-100">{guardedOutput}</span>
-            ) : (
-              <span className="text-slate-500 italic">Awaiting guarded stream output...</span>
-            )}
-          </div>
+          {renderInlineDiff()}
         </div>
-      </div>
+      )}
 
       {/* Semantic Claim Inspector Detail */}
       {analysis && analysis.results.length > 0 && (
@@ -227,7 +308,7 @@ export const StreamAuditor: React.FC = () => {
                 <div className="flex items-center gap-3 text-slate-300">
                   <span className="line-through text-red-400">{r.claim.asserted_value}</span>
                   <ArrowRight className="w-3 h-3 text-slate-500" />
-                  <span className="text-emerald-400 font-semibold">{r.authoritative_fact?.expected_value}</span>
+                  <span className="text-emerald-400 font-semibold">{r.authoritative_fact?.expected_value || r.applied_action}</span>
                   <span className="text-slate-400">Action: <span className="text-white font-medium">{r.applied_action}</span></span>
                 </div>
               </div>

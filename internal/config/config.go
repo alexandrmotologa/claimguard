@@ -36,10 +36,11 @@ func (s ServerConfig) WriteTimeout() time.Duration {
 
 // UpstreamConfig holds upstream LLM provider settings.
 type UpstreamConfig struct {
-	Provider     string `yaml:"provider"`      // simulator, openai, anthropic, ollama, custom
-	BaseURL      string `yaml:"base_url"`      // e.g. https://api.openai.com/v1
-	APIKey       string `yaml:"api_key"`       // Bearer token or API key
-	DefaultModel string `yaml:"default_model"` // Fallback model name
+	Provider     string           `yaml:"provider"`      // simulator, openai, anthropic, ollama, custom
+	BaseURL      string           `yaml:"base_url"`      // e.g. https://api.openai.com/v1
+	APIKey       string           `yaml:"api_key"`       // Bearer token or API key
+	DefaultModel string           `yaml:"default_model"` // Fallback model name
+	Fallbacks    []UpstreamConfig `yaml:"fallbacks,omitempty"`
 }
 
 // PolicyConfig defines runtime action rules for detected contradictions.

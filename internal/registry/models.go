@@ -26,8 +26,30 @@ type Fact struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// ForbiddenPattern represents a strictly barred assertion or unauthorized commitment.
+type ForbiddenPattern struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Pattern      string    `json:"pattern"`       // Regex pattern (e.g. (?i)\blifetime\s+warranty\b)
+	Category     string    `json:"category"`      // commercial, legal, medical, security
+	PolicyAction string    `json:"policy_action"` // strict_halt, rewrite, disclaimer
+	Replacement  string    `json:"replacement"`   // Replacement text if action is rewrite
+	Reason       string    `json:"reason"`        // Compliance justification
+	SourceDoc    string    `json:"source_doc"`    // Regulatory policy identifier
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ForbiddenMatch represents a detected occurrence of a forbidden pattern in a sentence.
+type ForbiddenMatch struct {
+	Pattern ForbiddenPattern `json:"pattern"`
+	Matched string           `json:"matched"`
+	Start   int              `json:"start"`
+	End     int              `json:"end"`
+}
+
 // SeedData represents an importable knowledge registry bundle.
 type SeedData struct {
-	Entities []Entity `json:"entities" yaml:"entities"`
-	Facts    []Fact   `json:"facts" yaml:"facts"`
+	Entities          []Entity           `json:"entities" yaml:"entities"`
+	Facts             []Fact             `json:"facts" yaml:"facts"`
+	ForbiddenPatterns []ForbiddenPattern `json:"forbidden_patterns,omitempty" yaml:"forbidden_patterns,omitempty"`
 }

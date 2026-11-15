@@ -142,9 +142,28 @@ Available Commands:
   serve       Start the streaming proxy server and verification studio
   verify      Test a single statement against the ground truth registry
   ingest      Load facts from JSON, YAML, or CSV into the registry
-  audit       Query and export compliance audit records
+  audit       Query, verify, or export compliance audit records
+  scan        Execute automated red-teaming compliance scan
   demo        Run a self-contained live demonstration in the terminal
   help        Help about any command
+```
+
+## Observability and metrics
+
+claimguard exports standard Prometheus metrics on both `:8080/metrics` and `:9090/metrics`:
+
+```text
+# HELP claimguard_requests_total Total number of chat completion requests
+# TYPE claimguard_requests_total counter
+claimguard_requests_total 42
+
+# HELP claimguard_contradictions_total Total intercepted factual contradictions
+# TYPE claimguard_contradictions_total counter
+claimguard_contradictions_total 7
+
+# HELP claimguard_average_latency_ms Average sentence interception latency in milliseconds
+# TYPE claimguard_average_latency_ms gauge
+claimguard_average_latency_ms 0.2600
 ```
 
 ## Testing

@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { Shield, Activity, Database, FileText, Sliders, Radio } from 'lucide-react'
+import { Shield, Activity, Database, FileText, Sliders, Radio, ShieldCheck } from 'lucide-react'
 import { HallucinationGauge } from '../components/HallucinationGauge'
 import { StreamAuditor } from '../components/StreamAuditor'
 import { TruthTableEditor } from '../components/TruthTableEditor'
 import { ClaimFrequency } from '../components/ClaimFrequency'
 import { ComplianceLog } from '../components/ComplianceLog'
 import { PolicyConfig } from '../components/PolicyConfig'
+import { BenchmarkRunner } from '../components/BenchmarkRunner'
 import { MetricsSnapshot, AuditEvent } from '../types'
 
 export const Dashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'cockpit' | 'registry' | 'audit' | 'policy'>('cockpit')
+  const [activeTab, setActiveTab] = useState<'cockpit' | 'registry' | 'audit' | 'policy' | 'benchmark'>('cockpit')
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null)
   const [liveEvents, setLiveEvents] = useState<AuditEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
@@ -141,6 +142,17 @@ export const Dashboard: React.FC = () => {
             <Sliders className="w-3.5 h-3.5" />
             <span>Action Policy</span>
           </button>
+          <button
+            onClick={() => setActiveTab('benchmark')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+              activeTab === 'benchmark'
+                ? 'border-blue-500 text-white'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Red-Team Benchmark</span>
+          </button>
         </div>
       </nav>
 
@@ -159,6 +171,8 @@ export const Dashboard: React.FC = () => {
         {activeTab === 'audit' && <ComplianceLog liveAuditEvents={liveEvents} />}
 
         {activeTab === 'policy' && <PolicyConfig />}
+
+        {activeTab === 'benchmark' && <BenchmarkRunner />}
       </main>
 
       {/* Footer */}

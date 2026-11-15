@@ -2,13 +2,15 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/alexandrmotologa/claimguard/internal/benchmark"
 	"github.com/alexandrmotologa/claimguard/internal/config"
 	"github.com/alexandrmotologa/claimguard/internal/extractor"
+	"github.com/alexandrmotologa/claimguard/internal/proxy"
 	"github.com/alexandrmotologa/claimguard/internal/registry"
 	"github.com/alexandrmotologa/claimguard/internal/rewriter"
 	"github.com/alexandrmotologa/claimguard/internal/telemetry"
@@ -17,14 +19,17 @@ import (
 
 // APIServer serves REST endpoints for the verification studio.
 type APIServer struct {
-	store       *registry.Store
-	verifier    *verifier.Engine
-	rewriter    *rewriter.Rewriter
-	extractor   *extractor.Extractor
-	auditLogger *telemetry.AuditLogger
-	metrics     *telemetry.MetricsTracker
-	broadcaster *Broadcaster
-	cfg         *config.Config
+	store        *registry.Store
+	verifier     *verifier.Engine
+	rewriter     *rewriter.Rewriter
+	extractor    *extractor.Extractor
+	auditLogger  *telemetry.AuditLogger
+	metrics      *telemetry.MetricsTracker
+	broadcaster  *Broadcaster
+	cfg          *config.Config
+	upstream     proxy.UpstreamClient
+	latestReport *benchmark.Report
+	reportMu     sync.RWMutex
 }
 
 // NewAPIServer creates an API server handler for studio controls and telemetry.
@@ -37,6 +42,7 @@ func NewAPIServer(
 	metrics *telemetry.MetricsTracker,
 	broadcaster *Broadcaster,
 	cfg *config.Config,
+	upstream proxy.UpstreamClient,
 ) *APIServer {
 	return &APIServer{
 		store:       store,
@@ -47,11 +53,13 @@ func NewAPIServer(
 		metrics:     metrics,
 		broadcaster: broadcaster,
 		cfg:         cfg,
+		upstream:    upstream,
 	}
 }
 
 // RegisterRoutes registers all API endpoints on an HTTP mux.
 func (s *APIServer) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/metrics", s.handlePrometheus)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/entities", s.handleEntities)
@@ -61,8 +69,17 @@ func (s *APIServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/audit", s.handleAudit)
 	mux.HandleFunc("/api/audit/export", s.handleAuditExport)
 	mux.HandleFunc("/api/policy", s.handlePolicy)
+	mux.HandleFunc("/api/forbidden", s.handleForbidden)
+	mux.HandleFunc("/api/forbidden/", s.handleForbiddenDetail)
+	mux.HandleFunc("/api/benchmark/run", s.handleBenchmarkRun)
+	mux.HandleFunc("/api/benchmark/latest", s.handleBenchmarkLatest)
 	mux.HandleFunc("/api/verify/dry-run", s.handleDryRun)
 	mux.HandleFunc("/api/events/live", s.broadcaster.ServeHTTP)
+}
+
+func (s *APIServer) handlePrometheus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.Write([]byte(s.metrics.PrometheusFormat()))
 }
 
 func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +311,122 @@ func (s *APIServer) handlePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *APIServer) handleForbidden(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case http.MethodGet:
+		patterns, err := s.store.ListForbiddenPatterns()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(patterns)
+	case http.MethodPost:
+		var fp registry.ForbiddenPattern
+		if err := json.NewDecoder(r.Body).Decode(&fp); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if fp.ID == "" || fp.Pattern == "" {
+			http.Error(w, "pattern id and regex pattern are required", http.StatusBadRequest)
+			return
+		}
+		if err := s.store.SaveForbiddenPattern(fp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(fp)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *APIServer) handleForbiddenDetail(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/forbidden/")
+	if id == "" {
+		http.Error(w, "missing pattern id", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case http.MethodGet:
+		fp, err := s.store.GetForbiddenPattern(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if fp == nil {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(fp)
+	case http.MethodDelete:
+		if err := s.store.DeleteForbiddenPattern(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *APIServer) handleBenchmarkRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	suitePath := "examples/test_queries.jsonl"
+	type RunReq struct {
+		SuitePath string `json:"suite_path"`
+	}
+	var req RunReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.SuitePath != "" {
+		suitePath = req.SuitePath
+	}
+
+	scenarios, err := benchmark.LoadScenarios(suitePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	runner := benchmark.NewRunner(s.store, s.extractor, s.verifier, s.rewriter, s.upstream)
+	report, err := runner.RunSuite(r.Context(), "Automated Red-Teaming Compliance Suite", scenarios)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.reportMu.Lock()
+	s.latestReport = report
+	s.reportMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
+}
+
+func (s *APIServer) handleBenchmarkLatest(w http.ResponseWriter, r *http.Request) {
+	s.reportMu.RLock()
+	report := s.latestReport
+	s.reportMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if report == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "no_runs_yet",
+			"message": "Click 'Run Red-Team Scan' to execute automated compliance suite",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(report)
+}
+
 // DryRunRequest allows testing arbitrary sentences directly from the verification studio.
 type DryRunRequest struct {
 	Sentence      string `json:"sentence"`
@@ -322,19 +455,24 @@ func (s *APIServer) handleDryRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := s.extractor.ExtractClaims(req.Sentence, req.PromptContext)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("extract claims: %v", err), http.StatusInternalServerError)
-		return
+	var results []*verifier.VerificationResult
+
+	// 1. Check forbidden commitments
+	forbiddenResults, err := s.verifier.VerifyForbidden(req.Sentence)
+	if err == nil && len(forbiddenResults) > 0 {
+		results = append(results, forbiddenResults...)
 	}
 
-	var results []*verifier.VerificationResult
-	for _, c := range claims {
-		res, err := s.verifier.VerifyClaim(c)
-		if err != nil {
-			continue
+	// 2. Check factual and numerical claims
+	claims, err := s.extractor.ExtractClaims(req.Sentence, req.PromptContext)
+	if err == nil {
+		for _, c := range claims {
+			res, err := s.verifier.VerifyClaim(c)
+			if err != nil {
+				continue
+			}
+			results = append(results, res)
 		}
-		results = append(results, res)
 	}
 
 	transformRes := s.rewriter.Transform(req.Sentence, results)
