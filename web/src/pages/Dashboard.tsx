@@ -96,11 +96,11 @@ export const Dashboard: React.FC = () => {
       </header>
 
       {/* Navigation Sub-bar */}
-      <nav className="border-b border-border bg-surface/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1">
+      <nav className="border-b border-border bg-surface/40 overflow-x-auto scrollbar-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 min-w-max">
           <button
             onClick={() => setActiveTab('cockpit')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'cockpit'
                 ? 'border-blue-500 text-white'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -111,7 +111,7 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('registry')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'registry'
                 ? 'border-blue-500 text-white'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -122,7 +122,7 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'audit'
                 ? 'border-blue-500 text-white'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -133,7 +133,7 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('policy')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'policy'
                 ? 'border-blue-500 text-white'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -144,7 +144,7 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('benchmark')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'benchmark'
                 ? 'border-blue-500 text-white'
                 : 'border-transparent text-slate-400 hover:text-slate-200'

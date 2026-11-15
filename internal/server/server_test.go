@@ -103,3 +103,32 @@ func TestAPIDryRun(t *testing.T) {
 		t.Fatalf("expected rewritten sentence, got %q", resp.TransformedSentence)
 	}
 }
+
+func TestAPIStreamCompare(t *testing.T) {
+	_, mux := setupTestServer(t)
+
+	cmpReq := StreamCompareRequest{
+		Prompt: "What is your return policy?",
+		Model:  "gpt-4o",
+	}
+	body, _ := json.Marshal(cmpReq)
+
+	req := httptest.NewRequest("POST", "/api/stream/compare", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	responseString := w.Body.String()
+	if !bytes.Contains([]byte(responseString), []byte("event: raw")) {
+		t.Fatalf("expected event: raw in stream compare output")
+	}
+	if !bytes.Contains([]byte(responseString), []byte("event: guarded")) {
+		t.Fatalf("expected event: guarded in stream compare output")
+	}
+	if !bytes.Contains([]byte(responseString), []byte("event: done")) {
+		t.Fatalf("expected event: done in stream compare output")
+	}
+}

@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alexandrmotologa/claimguard/internal/benchmark"
 	"github.com/alexandrmotologa/claimguard/internal/config"
@@ -74,6 +77,7 @@ func (s *APIServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/benchmark/run", s.handleBenchmarkRun)
 	mux.HandleFunc("/api/benchmark/latest", s.handleBenchmarkLatest)
 	mux.HandleFunc("/api/verify/dry-run", s.handleDryRun)
+	mux.HandleFunc("/api/stream/compare", s.handleStreamCompare)
 	mux.HandleFunc("/api/events/live", s.broadcaster.ServeHTTP)
 }
 
@@ -488,4 +492,185 @@ func (s *APIServer) handleDryRun(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// StreamCompareRequest holds the prompt and optional model for side-by-side stream inspection.
+type StreamCompareRequest struct {
+	Prompt string `json:"prompt"`
+	Model  string `json:"model"`
+}
+
+func (s *APIServer) handleStreamCompare(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req StreamCompareRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	model := req.Model
+	if model == "" {
+		model = s.cfg.Upstream.DefaultModel
+	}
+
+	chatReq := &proxy.ChatCompletionRequest{
+		Model: model,
+		Messages: []proxy.ChatMessage{
+			{Role: "user", Content: req.Prompt},
+		},
+		Stream: true,
+	}
+
+	upstreamStream, err := s.upstream.StreamCompletion(r.Context(), chatReq)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	defer upstreamStream.Close()
+
+	scanner := bufio.NewScanner(upstreamStream)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+	var buffer string
+	promptContext := req.Prompt
+	requestID := fmt.Sprintf("cmp-%d", time.Now().UnixNano())
+
+	emitEvent := func(eventType string, data interface{}) {
+		b, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(b))
+		flusher.Flush()
+	}
+
+	processSentence := func(sentence string) {
+		start := time.Now()
+		s.metrics.RecordSentence()
+
+		var results []*verifier.VerificationResult
+
+		// Check forbidden invariants
+		forbiddenResults, err := s.verifier.VerifyForbidden(sentence)
+		if err == nil && len(forbiddenResults) > 0 {
+			results = append(results, forbiddenResults...)
+		}
+
+		// Extract claims
+		claims, err := s.extractor.ExtractClaims(sentence, promptContext)
+		if err == nil {
+			for _, c := range claims {
+				s.metrics.RecordClaimVerified()
+				res, err := s.verifier.VerifyClaim(c)
+				if err != nil {
+					continue
+				}
+				results = append(results, res)
+			}
+		}
+
+		transformRes := s.rewriter.Transform(sentence, results)
+		latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+
+		for _, res := range results {
+			if res.Status == verifier.StatusContradicted {
+				s.metrics.RecordContradiction(res.AppliedAction, res.Claim.EntityID, latencyMs)
+				event := telemetry.AuditEvent{
+					ID:                 fmt.Sprintf("audit-%d-%s", time.Now().UnixNano(), res.Claim.EntityID),
+					Timestamp:          time.Now().UTC(),
+					RequestID:          requestID,
+					PromptPreview:      promptContext,
+					OriginalSentence:   sentence,
+					CorrectedSentence:  transformRes.TransformedSentence,
+					EntityID:           res.Claim.EntityID,
+					Attribute:          res.Claim.Attribute,
+					AssertedValue:      res.Claim.AssertedValue,
+					AuthoritativeValue: "",
+					PolicyAction:       res.AppliedAction,
+					Status:             string(res.Status),
+					LatencyMs:          latencyMs,
+				}
+				if res.AuthoritativeFact != nil {
+					event.AuthoritativeValue = res.AuthoritativeFact.ExpectedValue
+				}
+				if s.auditLogger != nil {
+					_ = s.auditLogger.RecordEvent(event)
+				}
+				if s.broadcaster != nil {
+					s.broadcaster.PublishAudit(event)
+				}
+			}
+		}
+
+		emitEvent("guarded", map[string]interface{}{
+			"raw_sentence":     sentence,
+			"guarded_sentence": transformRes.TransformedSentence,
+			"results":          results,
+			"primary_action":   transformRes.PrimaryAction,
+			"should_halt":      transformRes.ShouldHalt,
+		})
+	}
+
+	for scanner.Scan() {
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
+
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if payload == "[DONE]" {
+			break
+		}
+
+		var chunk proxy.StreamChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		delta := chunk.Choices[0].Delta.Content
+		if delta == "" {
+			continue
+		}
+
+		// Emit raw token delta directly to client
+		emitEvent("raw", map[string]string{"delta": delta})
+
+		buffer += delta
+		sentences, remainder := extractor.SplitSentences(buffer, false)
+		for _, s := range sentences {
+			processSentence(s.Text)
+		}
+		buffer = remainder
+	}
+
+	if strings.TrimSpace(buffer) != "" {
+		sentences, _ := extractor.SplitSentences(buffer, true)
+		for _, s := range sentences {
+			processSentence(s.Text)
+		}
+	}
+
+	emitEvent("done", map[string]bool{"done": true})
 }
