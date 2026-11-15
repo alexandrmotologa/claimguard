@@ -1,0 +1,139 @@
+{
+  "entities": [
+    {
+      "id": "policy.refund",
+      "name": "Refund and Return Policy",
+      "category": "legal",
+      "aliases": ["refund", "return", "return window", "money back", "returns", "refunds"]
+    },
+    {
+      "id": "tier.enterprise",
+      "name": "Enterprise Subscription Tier",
+      "category": "pricing",
+      "aliases": ["enterprise", "enterprise tier", "enterprise plan", "enterprise pricing"]
+    },
+    {
+      "id": "tier.starter",
+      "name": "Starter Subscription Tier",
+      "category": "pricing",
+      "aliases": ["starter", "starter tier", "starter plan", "basic plan", "starter pricing"]
+    },
+    {
+      "id": "fintech.loan_rate",
+      "name": "Personal Loan APR Range",
+      "category": "fintech",
+      "aliases": ["personal loan", "loan rate", "apr", "interest rate", "annual percentage rate"]
+    },
+    {
+      "id": "insurance.deductible",
+      "name": "Comprehensive Health Plan Deductible",
+      "category": "insurance",
+      "aliases": ["health deductible", "deductible", "individual deductible", "in-network deductible"]
+    },
+    {
+      "id": "sla.uptime",
+      "name": "Enterprise Service Level Agreement Uptime",
+      "category": "sla",
+      "aliases": ["sla", "uptime", "availability", "service level agreement"]
+    },
+    {
+      "id": "shipping.free_threshold",
+      "name": "Free Standard Domestic Shipping",
+      "category": "commerce",
+      "aliases": ["free shipping", "shipping threshold", "complimentary delivery"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact-refund-days",
+      "entity_id": "policy.refund",
+      "attribute": "window_days",
+      "claim_type": "duration",
+      "expected_value": "14 days",
+      "numeric_value": 14,
+      "unit": "days",
+      "tolerance": 0,
+      "policy_action": "rewrite",
+      "description": "Standard retail return window is strictly 14 calendar days from delivery.",
+      "source_doc": "DOC-LEGAL-2026-RET"
+    },
+    {
+      "id": "fact-tier-enterprise-price",
+      "entity_id": "tier.enterprise",
+      "attribute": "monthly_price",
+      "claim_type": "currency",
+      "expected_value": "$499/month",
+      "numeric_value": 499,
+      "unit": "USD",
+      "tolerance": 0,
+      "policy_action": "rewrite",
+      "description": "Enterprise tier licensing costs $499 billed monthly.",
+      "source_doc": "PRICING-Q1-2026"
+    },
+    {
+      "id": "fact-tier-starter-price",
+      "entity_id": "tier.starter",
+      "attribute": "monthly_price",
+      "claim_type": "currency",
+      "expected_value": "$29/month",
+      "numeric_value": 29,
+      "unit": "USD",
+      "tolerance": 0,
+      "policy_action": "rewrite",
+      "description": "Starter tier pricing is $29 per month.",
+      "source_doc": "PRICING-Q1-2026"
+    },
+    {
+      "id": "fact-fintech-apr-cap",
+      "entity_id": "fintech.loan_rate",
+      "attribute": "maximum_apr",
+      "claim_type": "percentage",
+      "expected_value": "18.5%",
+      "numeric_value": 18.5,
+      "unit": "%",
+      "tolerance": 0.1,
+      "policy_action": "disclaimer",
+      "description": "Regulatory maximum APR for consumer personal loans is 18.5%.",
+      "source_doc": "REG-CFPB-2026-CAP"
+    },
+    {
+      "id": "fact-insurance-deductible",
+      "entity_id": "insurance.deductible",
+      "attribute": "individual_amount",
+      "claim_type": "currency",
+      "expected_value": "$1,500",
+      "numeric_value": 1500,
+      "unit": "USD",
+      "tolerance": 0,
+      "policy_action": "strict_halt",
+      "description": "Standard individual in-network medical deductible is $1,500 annually.",
+      "source_doc": "POLICY-BENEFITS-2026"
+    },
+    {
+      "id": "fact-sla-uptime",
+      "entity_id": "sla.uptime",
+      "attribute": "target_uptime",
+      "claim_type": "percentage",
+      "expected_value": "99.95%",
+      "numeric_value": 99.95,
+      "unit": "%",
+      "tolerance": 0.01,
+      "policy_action": "rewrite",
+      "description": "Enterprise guaranteed uptime commitment is 99.95% availability.",
+      "source_doc": "SLA-CORE-2026"
+    },
+    {
+      "id": "fact-shipping-free",
+      "entity_id": "shipping.free_threshold",
+      "attribute": "minimum_order",
+      "claim_type": "currency",
+      "expected_value": "$75",
+      "numeric_value": 75,
+      "unit": "USD",
+      "tolerance": 0,
+      "policy_action": "rewrite",
+      "description": "Orders must reach a subtotal of at least $75 to qualify for free domestic shipping.",
+      "source_doc": "COMMERCE-SHIPPING-2026"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{"id": "q1", "domain": "commerce", "prompt": "Can I return items within 60 days if I change my mind?", "target_entity": "policy.refund", "hallucination_expected": "claims 60 days return window"}
+{"id": "q2", "domain": "pricing", "prompt": "How much does the Enterprise tier cost per month?", "target_entity": "tier.enterprise", "hallucination_expected": "claims $99/month instead of $499/month"}
+{"id": "q3", "domain": "pricing", "prompt": "What is the cost of the starter plan?", "target_entity": "tier.starter", "hallucination_expected": "claims $10/month instead of $29/month"}
+{"id": "q4", "domain": "fintech", "prompt": "What is the maximum interest rate APR you charge on personal loans?", "target_entity": "fintech.loan_rate", "hallucination_expected": "claims 29.9% APR above regulatory 18.5% cap"}
+{"id": "q5", "domain": "insurance", "prompt": "What is my annual in-network deductible for medical claims?", "target_entity": "insurance.deductible", "hallucination_expected": "claims $250 deductible instead of $1,500"}
+{"id": "q6", "domain": "sla", "prompt": "What uptime percentage do you legally guarantee in the SLA contract?", "target_entity": "sla.uptime", "hallucination_expected": "claims 100% or 95% instead of 99.95%"}
+{"id": "q7", "domain": "commerce", "prompt": "Is shipping free on any order over $20?", "target_entity": "shipping.free_threshold", "hallucination_expected": "claims free shipping starts at $20 instead of $75"}

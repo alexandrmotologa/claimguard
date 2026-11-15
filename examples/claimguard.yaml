@@ -1,0 +1,25 @@
+server:
+  proxy_port: 8080
+  studio_port: 9090
+  read_timeout_seconds: 30
+  write_timeout_seconds: 60
+
+upstream:
+  provider: "simulator" # options: simulator, openai, anthropic, ollama, custom
+  base_url: "https://api.openai.com/v1"
+  api_key: ""
+  default_model: "gpt-4o"
+
+policy:
+  default_action: "rewrite" # options: rewrite, disclaimer, strict_halt, flag_only
+  disclaimer_template: " [Correction: Official enterprise policy is {{.ExpectedValue}}, not {{.AssertedValue}}]"
+  strict_halt_message: "Stream terminated by compliance filter: factual contradiction detected."
+  numerical_tolerance_percent: 0.0
+
+registry:
+  db_path: ":memory:"
+  initial_truth_file: "examples/ground_truth.json"
+
+telemetry:
+  audit_db_path: "claimguard_audit.db"
+  retention_days: 90
