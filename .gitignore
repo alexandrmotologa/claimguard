@@ -1,0 +1,39 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+claimguard
+
+# Test and coverage artifacts
+*.out
+*.test
+coverage.txt
+profile.out
+
+# Go dependency cache
+vendor/
+
+# Node / Web
+web/node_modules/
+web/dist/
+web/.env.local
+web/.env.*.local
+*.tsbuildinfo
+
+# SQLite databases & temp files
+*.db
+*.db-shm
+*.db-wal
+claimguard.db
+audit.db
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
