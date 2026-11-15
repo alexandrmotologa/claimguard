@@ -18,7 +18,6 @@ vendor/
 
 # Node / Web
 web/node_modules/
-web/dist/
 web/.env.local
 web/.env.*.local
 *.tsbuildinfo
