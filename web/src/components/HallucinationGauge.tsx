@@ -19,9 +19,9 @@ export const HallucinationGauge: React.FC<Props> = ({ metrics }) => {
   const strokeDashoffset = circumference - (Math.min(rate, 100) / 100) * circumference
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       {/* Interception Rate Dial */}
-      <div className="bg-surface border border-border rounded-xl p-5 flex items-center justify-between">
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-5 flex items-center justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider text-slate-400 font-medium mb-1">
             Interception Rate
@@ -63,7 +63,7 @@ export const HallucinationGauge: React.FC<Props> = ({ metrics }) => {
       </div>
 
       {/* Latency Impact */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between text-slate-400 mb-2">
           <span className="text-xs uppercase tracking-wider font-medium">Added Latency</span>
           <Zap className="w-4 h-4 text-emerald-400" />
@@ -78,7 +78,7 @@ export const HallucinationGauge: React.FC<Props> = ({ metrics }) => {
       </div>
 
       {/* Verified Claims */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between text-slate-400 mb-2">
           <span className="text-xs uppercase tracking-wider font-medium">Verified Claims</span>
           <ShieldCheck className="w-4 h-4 text-blue-400" />
@@ -92,7 +92,7 @@ export const HallucinationGauge: React.FC<Props> = ({ metrics }) => {
       </div>
 
       {/* Active Interventions */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="bg-surface border border-border rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between text-slate-400 mb-2">
           <span className="text-xs uppercase tracking-wider font-medium">Total Requests</span>
           <Activity className="w-4 h-4 text-purple-400" />

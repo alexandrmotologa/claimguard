@@ -142,6 +142,8 @@ async function run() {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   await clickButtonWithText(page, 'Audit Cockpit');
   await sleep(600);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(400);
   await page.screenshot({
     path: path.join(IMAGES_DIR, 'mobile_cockpit.png'),
     fullPage: false,
